@@ -117,8 +117,6 @@ void Graph::reset() {
 
 std::vector<std::pair<Vertex, Vertex>>
 Graph::matching(const std::vector<Vertex> &sources) {
-  forest.reset(begin(), end());
-
   using Match = std::pair<Vertex, Vertex>;
   std::vector<Match> matches;
 
@@ -162,6 +160,65 @@ Graph::matching(const std::vector<Vertex> &sources) {
 
   for (auto it = cbegin(); it != cend(); ++it)
     visited[*it] = false;
+
+  return matches;
+}
+
+std::vector<std::pair<Vertex, Vertex>>
+Graph::matchingFast(const std::vector<Vertex> &sources,
+                    const std::vector<Vertex> &targets) {
+  forest.reset(begin(), end());
+
+  using Match = std::pair<Vertex, Vertex>;
+  std::vector<Match> matches;
+
+  std::function<Vertex(Vertex)> dfs = [&](Vertex start) {
+    const int u = forest.findRoot(start);
+
+    if (flowIn(u) > 0 && sink[u] > 0) {
+      assert(forest.get(u) > 1<<25);
+      absorbed[u]--;
+      return u;
+    }
+
+    for (auto e = beginEdge(u); e != endEdge(u); ++e) {
+      const int v = e->to;
+      if (e->flow <= 0 || forest.findRoot(v) == u)
+        continue;
+
+      forest.set(u, 0);
+      forest.link(u, v, e->flow);
+      e->flow = 0;
+
+      Vertex m = dfs(u);
+      if (m != -1)
+        return m;
+
+      forest.cut(u);
+      forest.set(u, 0);
+    }
+
+    return -1;
+  };
+
+  for (auto u : targets)
+    forest.set(u, 1<<28);
+
+  for (auto u : sources) {
+    const auto v = dfs(u);
+    if (v != -1) {
+      matches.push_back({u,v});
+
+      forest.updatePath(u, -1);
+      while (forest.findRoot(u) != u) {
+        auto [value, w] = forest.findPathMin(u);
+        if (value == 0)
+          forest.cut(w), forest.set(w, 1 << 28);
+        else
+          break;
+      }
+    }
+  }
 
   return matches;
 }

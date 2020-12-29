@@ -185,5 +185,9 @@ public:
    */
   std::vector<std::pair<Vertex, Vertex>>
   matching(const std::vector<Vertex> &sources);
+
+  std::vector<std::pair<Vertex, Vertex>>
+  matchingFast(const std::vector<Vertex> &sources,
+               const std::vector<Vertex> &targets);
 };
 } // namespace UnitFlow
