@@ -234,9 +234,12 @@ Result Solver::compute() {
 
     VLOG(3) << "Computing matching with |S| = " << axLeft.size()
             << " |T| = " << axRight.size() << ".";
-    auto matching = subdivGraph->matchingFast(axLeft, axRight);
+    auto matching = subdivGraph->matching(axLeft);
     VLOG(3) << "Found matching of size " << matching.size() << ".";
-    assert(matching.size() == axLeft.size() && "Expected all source vertices to be matched.");
+
+    // TODO: Can we expect complete matching after removing level cut?
+    // assert(matching.size() == axLeft.size() &&
+    // "Expected all source vertices to be matched.");
     rounds.push_back(matching);
   }
 

@@ -1,4 +1,6 @@
 #include "unit_flow.hpp"
+#include <glog/logging.h>
+#include <glog/stl_logging.h>
 
 namespace UnitFlow {
 
@@ -116,9 +118,8 @@ void Graph::reset() {
 }
 
 std::vector<std::pair<Vertex, Vertex>>
-Graph::matching(const std::vector<Vertex> &sources) {
-  using Match = std::pair<Vertex, Vertex>;
-  std::vector<Match> matches;
+Graph::matchingSlow(const std::vector<Vertex> &sources) {
+  std::vector<std::pair<Vertex, Vertex>> matches;
 
   auto search = [&](Vertex start) {
     std::vector<Edge *> path;
@@ -165,58 +166,68 @@ Graph::matching(const std::vector<Vertex> &sources) {
 }
 
 std::vector<std::pair<Vertex, Vertex>>
-Graph::matchingFast(const std::vector<Vertex> &sources,
-                    const std::vector<Vertex> &targets) {
-  forest.reset(begin(), end());
+Graph::matching(const std::vector<Vertex> &sources) {
+  const int inf = 1 << 30;
 
-  using Match = std::pair<Vertex, Vertex>;
-  std::vector<Match> matches;
+  forest.reset(cbegin(), cend());
+  for (auto it = cbegin(); it != cend(); ++it)
+    nextEdgeIdx[*it] = 0;
 
-  std::function<Vertex(Vertex)> dfs = [&](Vertex start) {
-    const int u = forest.findRoot(start);
+  std::vector<std::pair<Vertex, Vertex>> matches;
 
-    if (flowIn(u) > 0 && sink[u] > 0) {
-      assert(forest.get(u) > 1<<25);
-      absorbed[u]--;
-      return u;
-    }
+  auto search = [&](Vertex start) {
+    while (true) {
+      auto u = forest.findRoot(start);
+      assert(forest.get(u) == inf);
 
-    for (auto e = beginEdge(u); e != endEdge(u); ++e) {
-      const int v = e->to;
-      if (e->flow <= 0 || forest.findRoot(v) == u)
-        continue;
+      if (absorbed[u] > 0 && sink[u] > 0)
+        return absorbed[u]--, sink[u]--, u;
 
-      forest.set(u, 0);
-      forest.link(u, v, e->flow);
-      e->flow = 0;
+      while (nextEdgeIdx[u] < degree(u)) {
+        auto e = getEdge(u, nextEdgeIdx[u]++);
+        if (e.flow <= 0 || forest.findRoot(e.to) == u)
+          continue;
+        forest.set(u, 0);
+        forest.link(u, e.to, e.flow);
+        e.flow = 0;
 
-      Vertex m = dfs(u);
-      if (m != -1)
-        return m;
-
-      forest.cut(u);
-      forest.set(u, 0);
+        u = forest.findRoot(start);
+        if (absorbed[u] > 0 && sink[u] > 0)
+          return absorbed[u]--, sink[u]--, u;
+      }
+      if (forest.findRoot(start) != start) {
+        auto rc = forest.findRootEdge(start);
+        forest.cut(rc);
+        forest.set(rc, inf);
+      } else {
+        break;
+      }
     }
 
     return -1;
   };
 
-  for (auto u : targets)
-    forest.set(u, 1<<28);
+  for (auto it = cbegin(); it != cend(); ++it)
+    forest.set(*it, inf);
 
-  for (auto u : sources) {
-    const auto v = dfs(u);
+  for (const auto u : sources) {
+    const auto v = search(u);
     if (v != -1) {
-      matches.push_back({u,v});
+      assert(forest.findRoot(u) == v && "Matched vertex should be forest root.");
+      matches.push_back({u, v});
 
       forest.updatePath(u, -1);
+      forest.set(v, inf);
       while (forest.findRoot(u) != u) {
         auto [value, w] = forest.findPathMin(u);
+        assert(forest.get(w) == value);
         if (value == 0)
-          forest.cut(w), forest.set(w, 1 << 28);
+          forest.cut(w), forest.set(w, inf);
         else
           break;
       }
+    } else {
+      VLOG(4) << "Could not match vertex " << u << ".";
     }
   }
 
